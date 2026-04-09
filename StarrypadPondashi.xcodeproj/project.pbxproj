@@ -1,0 +1,342 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		BF01 /* StarrypadPondashiApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FR01 /* StarrypadPondashiApp.swift */; };
+		BF02 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FR02 /* ContentView.swift */; };
+		BF03 /* AppViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = FR03 /* AppViewModel.swift */; };
+		BF04 /* PresetKit.swift in Sources */ = {isa = PBXBuildFile; fileRef = FR04 /* PresetKit.swift */; };
+		BF0E /* AppStatePersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = FR0E /* AppStatePersistence.swift */; };
+		BF05 /* StarrypadMIDIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = FR05 /* StarrypadMIDIClient.swift */; };
+		BF06 /* StarrypadProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = FR06 /* StarrypadProfile.swift */; };
+		BF07 /* SampleEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = FR07 /* SampleEngine.swift */; };
+		BF0F /* AudioOutputDevices.swift in Sources */ = {isa = PBXBuildFile; fileRef = FR0F /* AudioOutputDevices.swift */; };
+		BF08 /* PadGridView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FR08 /* PadGridView.swift */; };
+		BF09 /* StarrypadLeftPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FR09 /* StarrypadLeftPanelView.swift */; };
+		BF0A /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FR0A /* SettingsView.swift */; };
+		BF0B /* PadInspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FR0B /* PadInspectorView.swift */; };
+		BF0C /* StarrypadDefault.json in Resources */ = {isa = PBXBuildFile; fileRef = FR0C /* StarrypadDefault.json */; };
+		BF0D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = FR0D /* Assets.xcassets */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		FR00 /* StarrypadPondashi.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = StarrypadPondashi.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		FR01 /* StarrypadPondashiApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarrypadPondashiApp.swift; sourceTree = "<group>"; };
+		FR02 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		FR03 /* AppViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppViewModel.swift; sourceTree = "<group>"; };
+		FR04 /* PresetKit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetKit.swift; sourceTree = "<group>"; };
+		FR0E /* AppStatePersistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStatePersistence.swift; sourceTree = "<group>"; };
+		FR05 /* StarrypadMIDIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarrypadMIDIClient.swift; sourceTree = "<group>"; };
+		FR06 /* StarrypadProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarrypadProfile.swift; sourceTree = "<group>"; };
+		FR07 /* SampleEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SampleEngine.swift; sourceTree = "<group>"; };
+		FR0F /* AudioOutputDevices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioOutputDevices.swift; sourceTree = "<group>"; };
+		FR08 /* PadGridView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PadGridView.swift; sourceTree = "<group>"; };
+		FR09 /* StarrypadLeftPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarrypadLeftPanelView.swift; sourceTree = "<group>"; };
+		FR0A /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		FR0B /* PadInspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PadInspectorView.swift; sourceTree = "<group>"; };
+		FR0C /* StarrypadDefault.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = StarrypadDefault.json; sourceTree = "<group>"; };
+		FR0D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		FF01 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		FG00 = {
+			isa = PBXGroup;
+			children = (
+				FG01 /* StarrypadPondashi */,
+				FG02 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		FG01 /* StarrypadPondashi */ = {
+			isa = PBXGroup;
+			children = (
+				FR01 /* StarrypadPondashiApp.swift */,
+				FR02 /* ContentView.swift */,
+				FR03 /* AppViewModel.swift */,
+				FG03 /* Model */,
+				FG04 /* MIDI */,
+				FG05 /* Audio */,
+				FG06 /* UI */,
+				FG07 /* Resources */,
+				FR0D /* Assets.xcassets */,
+			);
+			path = StarrypadPondashi;
+			sourceTree = "<group>";
+		};
+		FG02 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				FR00 /* StarrypadPondashi.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		FG03 /* Model */ = {
+			isa = PBXGroup;
+			children = (
+				FR04 /* PresetKit.swift */,
+				FR0E /* AppStatePersistence.swift */,
+			);
+			path = Model;
+			sourceTree = "<group>";
+		};
+		FG04 /* MIDI */ = {
+			isa = PBXGroup;
+			children = (
+				FR05 /* StarrypadMIDIClient.swift */,
+				FR06 /* StarrypadProfile.swift */,
+			);
+			path = MIDI;
+			sourceTree = "<group>";
+		};
+		FG05 /* Audio */ = {
+			isa = PBXGroup;
+			children = (
+				FR07 /* SampleEngine.swift */,
+				FR0F /* AudioOutputDevices.swift */,
+			);
+			path = Audio;
+			sourceTree = "<group>";
+		};
+		FG06 /* UI */ = {
+			isa = PBXGroup;
+			children = (
+				FR08 /* PadGridView.swift */,
+				FR09 /* StarrypadLeftPanelView.swift */,
+				FR0A /* SettingsView.swift */,
+				FR0B /* PadInspectorView.swift */,
+			);
+			path = UI;
+			sourceTree = "<group>";
+		};
+		FG07 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				FR0C /* StarrypadDefault.json */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		NT01 /* StarrypadPondashi */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CL02 /* Build configuration list for PBXNativeTarget "StarrypadPondashi" */;
+			buildPhases = (
+				SRC1 /* Sources */,
+				FF01 /* Frameworks */,
+				RES1 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = StarrypadPondashi;
+			productName = StarrypadPondashi;
+			productReference = FR00 /* StarrypadPondashi.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		PR01 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1620;
+				LastUpgradeCheck = 1620;
+				TargetAttributes = {
+					NT01 = {
+						CreatedOnToolsVersion = 16.2;
+					};
+				};
+			};
+			buildConfigurationList = CL01 /* Build configuration list for PBXProject "StarrypadPondashi" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = ja;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				ja,
+				Base,
+			);
+			mainGroup = FG00;
+			productRefGroup = FG02 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				NT01 /* StarrypadPondashi */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		RES1 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BF0C /* StarrypadDefault.json in Resources */,
+				BF0D /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		SRC1 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BF01 /* StarrypadPondashiApp.swift in Sources */,
+				BF02 /* ContentView.swift in Sources */,
+				BF03 /* AppViewModel.swift in Sources */,
+				BF04 /* PresetKit.swift in Sources */,
+				BF0E /* AppStatePersistence.swift in Sources */,
+				BF05 /* StarrypadMIDIClient.swift in Sources */,
+				BF06 /* StarrypadProfile.swift in Sources */,
+				BF07 /* SampleEngine.swift in Sources */,
+				BF0F /* AudioOutputDevices.swift in Sources */,
+				BF08 /* PadGridView.swift in Sources */,
+				BF09 /* StarrypadLeftPanelView.swift in Sources */,
+				BF0A /* SettingsView.swift in Sources */,
+				BF0B /* PadInspectorView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		BC01 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		BC02 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		BC03 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Starrypad Pondashi";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.starrypad.pondashi;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		BC04 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Starrypad Pondashi";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.starrypad.pondashi;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		CL01 /* Build configuration list for PBXProject "StarrypadPondashi" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BC01 /* Debug */,
+				BC02 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		CL02 /* Build configuration list for PBXNativeTarget "StarrypadPondashi" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BC03 /* Debug */,
+				BC04 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = PR01 /* Project object */;
+}
