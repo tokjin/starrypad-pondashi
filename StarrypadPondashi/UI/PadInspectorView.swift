@@ -233,46 +233,33 @@ private struct InspectorPlaybackSeekBar: View {
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { _ in
             let t = vm.engine.playbackTimeline(for: slot)
-            let durationSec = t?.durationSec ?? 0
             let liveNorm: Float = {
                 guard let t, t.durationSec > 0.000_1 else { return 0 }
                 return Float(t.positionSec / t.durationSec)
             }()
             let displayNorm = isDragging ? dragNorm : liveNorm
-            let posSec = Double(displayNorm) * durationSec
 
-            HStack(alignment: .center, spacing: 12) {
-                Slider(
-                    value: Binding(
-                        get: { Double(displayNorm) },
-                        set: { v in
-                            isDragging = true
-                            dragNorm = Float(v)
-                        }
-                    ),
-                    in: 0 ... 1,
-                    onEditingChanged: { editing in
-                        if !editing {
-                            vm.engine.seek(slotIndex: slot, normalized: dragNorm)
-                            isDragging = false
-                        }
+            Slider(
+                value: Binding(
+                    get: { Double(displayNorm) },
+                    set: { v in
+                        isDragging = true
+                        dragNorm = Float(v)
                     }
-                )
-                .frame(maxWidth: .infinity)
-                Text(Self.formatClock(durationSec))
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                    .frame(minWidth: 48, alignment: .trailing)
-            }
-            .accessibilityElement(children: .combine)
+                ),
+                in: 0 ... 1,
+                onEditingChanged: { editing in
+                    if !editing {
+                        vm.engine.seek(slotIndex: slot, normalized: dragNorm)
+                        isDragging = false
+                    }
+                }
+            )
+            .labelsHidden()
+            .frame(maxWidth: .infinity)
             .accessibilityLabel("再生位置")
-            .accessibilityValue("\(Self.formatClock(posSec)) / \(Self.formatClock(durationSec))")
+            .accessibilityValue(String(format: "%.0f%%", Double(displayNorm) * 100))
         }
-    }
-
-    private static func formatClock(_ seconds: Double) -> String {
-        guard seconds.isFinite, seconds >= 0 else { return "0:00" }
-        let s = Int(seconds.rounded())
-        return String(format: "%d:%02d", s / 60, s % 60)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

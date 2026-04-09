@@ -505,7 +505,8 @@ final class SampleEngine: ObservableObject {
     /// 指定スロットの先頭アクティブボイスについて、再生位置（秒）とファイル長（秒）を返す。
     func playbackTimeline(for slotIndex: Int) -> (positionSec: Double, durationSec: Double)? {
         voiceQueue.sync {
-            guard let v = activeVoices.first(where: { $0.slotIndex == slotIndex }) else { return nil }
+            // 同一スロットに複数ボイスがあるときは、配列末尾（直近トリガー）を表示に使う。
+            guard let v = activeVoices.last(where: { $0.slotIndex == slotIndex }) else { return nil }
             return Self.playbackTimeline(for: v)
         }
     }
@@ -522,15 +523,12 @@ final class SampleEngine: ObservableObject {
             let pos = Double(v.segmentStartFrame) / sr
             return (min(pos, durationSec), durationSec)
         }
-        // `sampleTime` は「セグメント先頭からの相対」か「ファイル上の絶対」のどちらか。両方足すとシーク直後に二重計上になる。
+        // `sampleTime` はセグメント先頭からの相対。絶対フレームは segmentStartFrame + sampleTime。
+        // combined が len をわずかに超える場合はクランプする。超過時に sampleTime だけを絶対位置とみなすと
+        // 相対値が小さいとき先頭付近に飛ぶことがあるため、combined を必ずクランプする。
         let st = pt.sampleTime
         let combined = v.segmentStartFrame + st
-        let absFrame: AVAudioFramePosition
-        if combined > len - 1 {
-            absFrame = max(0, min(st, len - 1))
-        } else {
-            absFrame = max(0, min(combined, len - 1))
-        }
+        let absFrame = max(0, min(combined, len - 1))
         return (Double(absFrame) / sr, durationSec)
     }
 
