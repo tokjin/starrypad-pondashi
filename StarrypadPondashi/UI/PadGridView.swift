@@ -70,8 +70,9 @@ struct PadGridView: View {
         return Color.secondary.opacity(0.22)
     }
 
-    private static func padCellBorderColor(hitFlash: Bool, isSelected: Bool, cfg: SlotConfig, lightFG: Bool) -> Color {
+    private static func padCellBorderColor(hitFlash: Bool, isSelected: Bool, queueReserved: Bool, cfg: SlotConfig, lightFG: Bool) -> Color {
         if hitFlash { return Color.orange }
+        if queueReserved { return Color.green.opacity(0.9) }
         if isSelected { return Color.accentColor }
         return padNormalBorderColor(cfg: cfg, lightFG: lightFG)
     }
@@ -81,6 +82,7 @@ struct PadGridView: View {
         let cfg = vm.kit.slots[slot]
         let name = cfg.padDisplayLabel()
         let playing = vm.playingSlots.contains(slot)
+        let queueReserved = vm.pendingQueueSlot == slot
         /// インスペクタ表示中のみ選択の青枠を付ける（格納時は付けない）
         let isSelected = inspectorPresented && selectedSlot == slot
         let hitFlash = vm.lastHitSlot == slot
@@ -122,8 +124,8 @@ struct PadGridView: View {
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
                     .strokeBorder(
-                        Self.padCellBorderColor(hitFlash: hitFlash, isSelected: isSelected, cfg: cfg, lightFG: lightFG),
-                        lineWidth: hitFlash ? 3 : (isSelected ? 2.5 : 1)
+                        Self.padCellBorderColor(hitFlash: hitFlash, isSelected: isSelected, queueReserved: queueReserved, cfg: cfg, lightFG: lightFG),
+                        lineWidth: hitFlash ? 3 : ((isSelected || queueReserved) ? 2.5 : 1)
                     )
             )
             .overlay(

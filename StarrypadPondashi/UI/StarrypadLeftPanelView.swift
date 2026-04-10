@@ -78,6 +78,10 @@ struct StarrypadLeftPanelView: View {
             if knobRole == .playbackRate {
                 return String(format: "%.2f×", PlaybackRateMapping.rate(fromNormalized: v))
             }
+            if knobRole == .eqLow || knobRole == .eqMid || knobRole == .eqHigh {
+                let db = Double(EQToneKnobMapping.gainDb(fromNormalized: v))
+                return String(format: "%+.1f dB", db)
+            }
             return String(format: "%.0f%%", Double(v) * 100)
         }()
         return VStack(spacing: 6) {
@@ -103,6 +107,23 @@ struct StarrypadLeftPanelView: View {
         }
     }
 
+    /// Starrypad の再生／一時停止（▶︎）相当
+    private var transportPlayPauseKey: some View {
+        Button {
+            vm.toggleTransportPause()
+        } label: {
+            Text(vm.isTransportPaused ? "▶︎" : "❚❚")
+                .font(.title3)
+                .frame(minWidth: 56, minHeight: 36)
+                .background(RoundedRectangle(cornerRadius: 5).fill(Color(nsColor: .windowBackgroundColor)))
+                .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color.secondary.opacity(0.2)))
+        }
+        .buttonStyle(.plain)
+        .disabled(vm.playingSlots.isEmpty)
+        .opacity(vm.playingSlots.isEmpty ? 0.45 : 1)
+        .help(vm.playingSlots.isEmpty ? "再生中のサンプルがないときは使えません" : (vm.isTransportPaused ? "再開" : "一時停止"))
+    }
+
     private var transportCluster: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("トランスポート")
@@ -113,7 +134,7 @@ struct StarrypadLeftPanelView: View {
                 smallKey("FADER\nBANK")
             }
             HStack(spacing: 8) {
-                iconKey("▶︎")
+                transportPlayPauseKey
                 smallKey("NOTE\nREPEAT")
                 iconKey("▲")
             }

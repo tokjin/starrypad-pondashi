@@ -254,7 +254,10 @@ struct PadInspectorView: View {
     private var volumeBinding: Binding<Float> {
         Binding(
             get: { vm.kit.slots[slot].volume },
-            set: { v in replaceSlot { $0.volume = v } }
+            set: { v in
+                replaceSlot { $0.volume = v }
+                vm.applyLiveSlotVolume(slotIndex: slot)
+            }
         )
     }
 

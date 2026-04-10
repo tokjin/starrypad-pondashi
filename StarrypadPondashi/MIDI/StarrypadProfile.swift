@@ -87,7 +87,11 @@ struct StarrypadProfile: Codable, Equatable, Identifiable {
             buttons: [
                 .note(channel: nil, note: 100),
                 .note(channel: nil, note: 101),
-                .note(channel: nil, note: 102)
+                .note(channel: nil, note: 102),
+                /// 再生／一時停止（多くの実機は CC で送るため既定は CC 60）
+                .cc(channel: nil, number: 60),
+                .note(channel: nil, note: 96),
+                .note(channel: nil, note: 97)
             ],
             bankSwitch: BankSwitchSpec(programChanges: [0, 1, 2], notes: nil, cycleNote: nil)
         )

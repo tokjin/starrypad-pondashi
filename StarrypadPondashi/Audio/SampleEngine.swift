@@ -29,6 +29,10 @@ private final class ActiveVoice {
     var loopRestartFrame: AVAudioFramePosition
     let loop: Bool
     let fadeOutMs: Double
+    /// トリガー時のベロシティ係数（0…1）。スロット音量変更時に `mixer` 出力を再計算するために保持
+    let velocityScale: Float
+    /// フェードイン中の古い `asyncAfter` を無効化するための世代（ライブ音量更新で進める）
+    var fadeBatchId: Int = 0
 
     init(
         player: AVAudioPlayerNode,
@@ -39,7 +43,8 @@ private final class ActiveVoice {
         segmentStartFrame: AVAudioFramePosition,
         loopRestartFrame: AVAudioFramePosition,
         loop: Bool,
-        fadeOutMs: Double
+        fadeOutMs: Double,
+        velocityScale: Float
     ) {
         self.player = player
         self.mixer = mixer
@@ -51,10 +56,21 @@ private final class ActiveVoice {
         self.loopRestartFrame = loopRestartFrame
         self.loop = loop
         self.fadeOutMs = fadeOutMs
+        self.velocityScale = velocityScale
     }
 }
 
-/// `… → dynamics → reverb → delay → 出力`。センドは各ユニットの wetDryMix（並列合算は AVAudioMixerNode の多入力で無音になり得るため直列に変更）。
+/// ノブの 0…1（中央 0.5＝フラット）を EQ のゲイン（dB）にマップ。
+enum EQToneKnobMapping {
+    /// ±12 dB
+    static func gainDb(fromNormalized u: Float) -> Float {
+        let c = max(0, min(1, u))
+        let t = c * 2 - 1
+        return t * 12
+    }
+}
+
+/// `… → dynamics → reverb → delay → EQ → 出力`。センドは各ユニットの wetDryMix（並列合算は AVAudioMixerNode の多入力で無音になり得るため直列に変更）。
 final class SampleEngine: ObservableObject {
     private let engine = AVAudioEngine()
     private let mainMixer: AVAudioMixerNode
@@ -62,8 +78,11 @@ final class SampleEngine: ObservableObject {
     private let dynamicsUnit: AVAudioUnitEffect
     private let reverbNode: AVAudioUnitReverb
     private let delayNode: AVAudioUnitDelay
+    private let eqUnit: AVAudioUnitEQ
     private var voicePool: [(player: AVAudioPlayerNode, mixer: AVAudioMixerNode, inUse: Bool)] = []
     private var activeVoices: [ActiveVoice] = []
+    /// `toggleTransportPause` による一時停止（各 `AVAudioPlayerNode.pause` と対応）
+    private var playbackSuspended = false
     private let voiceQueue = DispatchQueue(label: "StarrypadPondashi.SampleEngine")
     private var configurationObserver: NSObjectProtocol?
 
@@ -71,8 +90,43 @@ final class SampleEngine: ObservableObject {
     private var currentVoicePan: Float = 0
 
     @Published private(set) var playingSlots: Set<Int> = []
+    /// トランスポート一時停止中（`AVAudioPlayerNode.pause`）。ボイスがなくなると自動でオフ。
+    @Published private(set) var isTransportPaused: Bool = false
 
     var isEngineRunning: Bool { engine.isRunning }
+
+    /// 全アクティブボイスの再生／一時停止を切り替え。無音時は何もしない。
+    func toggleTransportPause() {
+        voiceQueue.async {
+            guard !self.activeVoices.isEmpty else { return }
+            if self.playbackSuspended {
+                for v in self.activeVoices {
+                    v.player.play()
+                }
+                self.playbackSuspended = false
+            } else {
+                for v in self.activeVoices {
+                    v.player.pause()
+                }
+                self.playbackSuspended = true
+            }
+            DispatchQueue.main.async {
+                self.isTransportPaused = self.playbackSuspended
+            }
+        }
+    }
+
+    /// 新規トリガーで一時停止中のレイヤーを先に再開する（重ねて鳴らすため）。
+    private func resumeTransportIfSuspendedBeforeNewVoice() {
+        guard playbackSuspended else { return }
+        for v in activeVoices {
+            v.player.play()
+        }
+        playbackSuspended = false
+        DispatchQueue.main.async {
+            self.isTransportPaused = false
+        }
+    }
 
     private let poolSize = 48
 
@@ -110,6 +164,23 @@ final class SampleEngine: ObservableObject {
         del.feedback = 28
         del.lowPassCutoff = 18_000
 
+        let eq = AVAudioUnitEQ(numberOfBands: 3)
+        eqUnit = eq
+        engine.attach(eq)
+        eq.bands[0].filterType = .lowShelf
+        eq.bands[0].frequency = 200
+        eq.bands[0].gain = 0
+        eq.bands[0].bypass = false
+        eq.bands[1].filterType = .parametric
+        eq.bands[1].frequency = 1_800
+        eq.bands[1].bandwidth = 1.2
+        eq.bands[1].gain = 0
+        eq.bands[1].bypass = false
+        eq.bands[2].filterType = .highShelf
+        eq.bands[2].frequency = 9_000
+        eq.bands[2].gain = 0
+        eq.bands[2].bypass = false
+
         for _ in 0 ..< poolSize {
             let player = AVAudioPlayerNode()
             let mix = AVAudioMixerNode()
@@ -128,7 +199,8 @@ final class SampleEngine: ObservableObject {
         engine.connect(timePitch, to: dyn, format: nil)
         engine.connect(dyn, to: rev, format: nil)
         engine.connect(rev, to: del, format: nil)
-        engine.connect(del, to: engine.outputNode, format: nil)
+        engine.connect(del, to: eq, format: nil)
+        engine.connect(eq, to: engine.outputNode, format: nil)
 
         configureDynamicsDefaults(dyn)
         setDynamicsAmount(0.35)
@@ -251,6 +323,18 @@ final class SampleEngine: ObservableObject {
         mainMixer.outputVolume = max(0, min(1, v))
     }
 
+    /// LOW / MID / HIGH のゲイン（dB）。未割当ての帯は 0 dB（フラット）。
+    func setEQTone(lowDb: Float, midDb: Float, highDb: Float) {
+        let l = max(-24, min(24, lowDb))
+        let m = max(-24, min(24, midDb))
+        let h = max(-24, min(24, highDb))
+        eqUnit.bands[0].gain = l
+        eqUnit.bands[1].gain = m
+        eqUnit.bands[2].gain = h
+        let flat = abs(l) < 0.02 && abs(m) < 0.02 && abs(h) < 0.02
+        eqUnit.auAudioUnit.shouldBypassEffect = flat
+    }
+
     private func ensureEngineRunning() {
         guard !engine.isRunning else { return }
         do {
@@ -301,8 +385,21 @@ final class SampleEngine: ObservableObject {
         }
     }
 
+    /// 再生中ボイスのミキサー音量を、キットのスロット音量に合わせて更新（インスペクタのスライダー用）
+    func applySlotVolumeLive(slotIndex: Int, slotVolume: Float) {
+        let sv = max(0, min(2, slotVolume))
+        voiceQueue.async {
+            for v in self.activeVoices where v.slotIndex == slotIndex {
+                v.fadeBatchId += 1
+                let peak = max(0, min(1, sv * v.velocityScale))
+                v.mixer.outputVolume = peak
+            }
+        }
+    }
+
     func stopAll() {
         voiceQueue.sync {
+            playbackSuspended = false
             for v in activeVoices {
                 v.player.stop()
                 v.mixer.outputVolume = 0
@@ -374,9 +471,14 @@ final class SampleEngine: ObservableObject {
     }
 
     private func publishPlaying() {
+        if activeVoices.isEmpty {
+            playbackSuspended = false
+        }
         let set = Set(activeVoices.map(\.slotIndex))
+        let paused = playbackSuspended
         DispatchQueue.main.async {
             self.playingSlots = set
+            self.isTransportPaused = paused
         }
     }
 
@@ -409,6 +511,8 @@ final class SampleEngine: ObservableObject {
         voiceQueue.async {
             self.ensureEngineRunning()
             guard self.engine.isRunning else { return }
+
+            self.resumeTransportIfSuspendedBeforeNewVoice()
 
             if let g = chokeGroup {
                 let victims = self.activeVoices.filter { $0.chokeGroup == g && $0.slotIndex != slotIndex }
@@ -446,17 +550,22 @@ final class SampleEngine: ObservableObject {
                 segmentStartFrame: segment.start,
                 loopRestartFrame: segment.start,
                 loop: loop,
-                fadeOutMs: fadeOutMs
+                fadeOutMs: fadeOutMs,
+                velocityScale: velScale
             )
             self.activeVoices.append(voice)
 
             if fadeInMs > 1 {
+                voice.fadeBatchId += 1
+                let fadeBatch = voice.fadeBatchId
                 let steps = max(2, Int(fadeInMs / 20))
                 let interval = fadeInMs / Double(steps) / 1000
                 for step in 1 ... steps {
                     DispatchQueue.global().asyncAfter(deadline: .now() + interval * Double(step)) { [weak self] in
                         self?.voiceQueue.async {
-                            guard self?.activeVoices.contains(where: { $0 === voice }) == true else { return }
+                            guard let self else { return }
+                            guard self.activeVoices.contains(where: { $0 === voice }),
+                                  voice.fadeBatchId == fadeBatch else { return }
                             let t = Float(step) / Float(steps)
                             mix.outputVolume = targetVol * t
                         }
@@ -601,5 +710,63 @@ final class SampleEngine: ObservableObject {
         }
         voice.mixer.outputVolume = vol
         voice.player.play()
+        if playbackSuspended {
+            voice.player.pause()
+        }
+    }
+
+    /// 全ボイスをフェードアウトして除去したあと `completion`（キュー予約のクロスフェード用）。
+    func fadeOutAllThen(fadeOutMs: Double, completion: @escaping () -> Void) {
+        voiceQueue.async {
+            let voices = Array(self.activeVoices)
+            if voices.isEmpty {
+                DispatchQueue.main.async { completion() }
+                return
+            }
+            var remaining = voices.count
+            for voice in voices {
+                self.fadeOutAndRemoveVoice(voice, fadeOutMs: fadeOutMs) {
+                    self.voiceQueue.async {
+                        remaining -= 1
+                        if remaining == 0 {
+                            self.publishPlaying()
+                            DispatchQueue.main.async { completion() }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func fadeOutAndRemoveVoice(_ voice: ActiveVoice, fadeOutMs: Double, completion: @escaping () -> Void) {
+        if fadeOutMs <= 1 {
+            stopVoiceImmediate(voice)
+            completion()
+            return
+        }
+        let start = voice.mixer.outputVolume
+        let steps = max(2, Int(fadeOutMs / 20))
+        let interval = fadeOutMs / Double(steps) / 1000
+        for step in 1 ... steps {
+            DispatchQueue.global().asyncAfter(deadline: .now() + interval * Double(step)) { [weak self] in
+                self?.voiceQueue.async {
+                    guard let self else {
+                        completion()
+                        return
+                    }
+                    let stillThere = self.activeVoices.contains(where: { $0 === voice })
+                    let t = Float(step) / Float(steps)
+                    if stillThere {
+                        voice.mixer.outputVolume = start * (1 - t)
+                    }
+                    if step == steps {
+                        if self.activeVoices.contains(where: { $0 === voice }) {
+                            self.stopVoiceImmediate(voice)
+                        }
+                        completion()
+                    }
+                }
+            }
+        }
     }
 }

@@ -8,6 +8,9 @@ import SwiftUI
 
 private let vmAudioLog = Logger(subsystem: "com.starrypad.pondashi", category: "AppViewModel")
 
+/// スタッターで同じ位置へ戻す間隔（秒）。長いほど1回の繰り返しで聞こえる幅が広い。
+private let stutterRepeatIntervalSec: TimeInterval = 0.13
+
 /// パッド 16 個分のノートキャプチャ
 struct PadCaptureSession {
     var bankIndex: Int
@@ -34,6 +37,8 @@ final class AppViewModel: ObservableObject {
 
     /// UI 用（`SampleEngine` の再生中スロットを反映）
     @Published private(set) var playingSlots: Set<Int> = []
+    /// トランスポート一時停止（`SampleEngine.isTransportPaused` と同期）
+    @Published private(set) var isTransportPaused: Bool = false
 
     @Published var kit: PresetKit
     @Published var profile: StarrypadProfile
@@ -45,8 +50,12 @@ final class AppViewModel: ObservableObject {
     @Published var captureControlMessage: String?
     @Published var captureFaderIndex: Int?
     @Published var captureKnobIndex: Int?
+    /// ハードの論理ボタン（停止・バンク・再生/一時停止など）のノート学習
+    @Published var captureButtonIndex: Int?
     /// 直近に叩かれたパッド（短時間ハイライト用）
     @Published private(set) var lastHitSlot: Int?
+    /// A/B「予約」モードで次に切り替えるパッド（UI ハイライト用）
+    @Published private(set) var pendingQueueSlot: Int?
 
     /// YouTube / yt-dlp 取り込み中（空パッドのインスペクタ用）
     @Published var youtubeImportInProgress = false
@@ -63,6 +72,13 @@ final class AppViewModel: ObservableObject {
     private var padHitClearTask: Task<Void, Never>?
     private var terminateObserver: NSObjectProtocol?
     private let logLimit = 80
+    /// ハードボタンが CC のとき、連続値でトグルが多重発火しないよう直前値を保持（ボタン添字）
+    private var lastHardwareButtonCCValue: [Int: Int] = [:]
+    /// A/B（buttons 4/5）が「押されている」状態（予約モード用）
+    private var sideButtonHeld: Set<Int> = []
+    /// スタッター用：スロットごとの正規化シーク位置
+    private var stutterAnchorNormalized: [Int: Float] = [:]
+    private var stutterTimer: Timer?
 
     init() {
         kit = AppStatePersistence.loadKitIfPresent() ?? PresetKit.makeEmpty()
@@ -80,6 +96,13 @@ final class AppViewModel: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] s in
                 self?.playingSlots = s
+            }
+            .store(in: &cancellables)
+
+        engine.$isTransportPaused
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] v in
+                self?.isTransportPaused = v
             }
             .store(in: &cancellables)
 
@@ -263,6 +286,22 @@ final class AppViewModel: ObservableObject {
             engine.setDelayTime(dlyTimeSamples.reduce(0, +) / Float(dlyTimeSamples.count))
         }
 
+        var eqLowSamples: [Float] = []
+        var eqMidSamples: [Float] = []
+        var eqHighSamples: [Float] = []
+        for i in 0 ..< min(2, kRoles.count, knobDisplay.count) {
+            switch kRoles[i] {
+            case .eqLow: eqLowSamples.append(knobDisplay[i])
+            case .eqMid: eqMidSamples.append(knobDisplay[i])
+            case .eqHigh: eqHighSamples.append(knobDisplay[i])
+            default: break
+            }
+        }
+        let lowDb = eqLowSamples.isEmpty ? 0 : EQToneKnobMapping.gainDb(fromNormalized: eqLowSamples.reduce(0, +) / Float(eqLowSamples.count))
+        let midDb = eqMidSamples.isEmpty ? 0 : EQToneKnobMapping.gainDb(fromNormalized: eqMidSamples.reduce(0, +) / Float(eqMidSamples.count))
+        let highDb = eqHighSamples.isEmpty ? 0 : EQToneKnobMapping.gainDb(fromNormalized: eqHighSamples.reduce(0, +) / Float(eqHighSamples.count))
+        engine.setEQTone(lowDb: lowDb, midDb: midDb, highDb: highDb)
+
         syncMasterOutputToEngine()
     }
 
@@ -302,7 +341,7 @@ final class AppViewModel: ObservableObject {
             case .master, .gain:
                 product *= knobDisplay[i]
                 any = true
-            case .none, .pan, .dynamics, .pitch, .reverbSend, .delaySend, .delayFeedback, .delayTime, .playbackRate:
+            case .none, .pan, .dynamics, .pitch, .reverbSend, .delaySend, .delayFeedback, .delayTime, .playbackRate, .eqLow, .eqMid, .eqHigh:
                 break
             }
         }
@@ -429,8 +468,24 @@ final class AppViewModel: ObservableObject {
         applyFaderRolesToEngine()
     }
 
+    /// インスペクタでスロット音量を変更したとき、再生中のボイスへ即反映
+    func applyLiveSlotVolume(slotIndex: Int) {
+        guard kit.slots.indices.contains(slotIndex) else { return }
+        engine.applySlotVolumeLive(slotIndex: slotIndex, slotVolume: kit.slots[slotIndex].volume)
+    }
+
     func triggerSlot(_ slot: Int, velocity: Int = 127) {
         guard slot >= 0, slot < PresetKit.slotCount else { return }
+        if isQueueModifierActive {
+            pendingQueueSlot = slot
+            return
+        }
+        playSlotInternal(slot, velocity: velocity)
+    }
+
+    /// キュー予約を挟まずに再生（内部・クロスフェード完了後）
+    private func playSlotInternal(_ slot: Int, velocity: Int = 127) {
+        stopStutterEffect()
         applyFaderRolesToEngine()
         registerPadHit(slot)
 
@@ -470,16 +525,81 @@ final class AppViewModel: ObservableObject {
         )
     }
 
+    private var isQueueModifierActive: Bool {
+        for idx in sideButtonHeld where idx == 4 || idx == 5 {
+            if modeForSideButton(idx) == .queueNextPad { return true }
+        }
+        return false
+    }
+
+    private func modeForSideButton(_ buttonIndex: Int) -> SideButtonBehavior {
+        switch buttonIndex {
+        case 4: return kit.sideButtonAMode
+        case 5: return kit.sideButtonBMode
+        default: return .panic
+        }
+    }
+
+    private func commitQueueTransition() {
+        guard let slot = pendingQueueSlot else { return }
+        pendingQueueSlot = nil
+        if playingSlots.isEmpty {
+            playSlotInternal(slot, velocity: 127)
+            return
+        }
+        let fadeMs = 450.0
+        engine.fadeOutAllThen(fadeOutMs: fadeMs) { [weak self] in
+            self?.playSlotInternal(slot, velocity: 127)
+        }
+    }
+
+    private func startStutterEffect() {
+        stopStutterEffect()
+        stutterAnchorNormalized.removeAll()
+        for slot in playingSlots {
+            if let t = engine.playbackTimeline(for: slot), t.durationSec > 0 {
+                stutterAnchorNormalized[slot] = Float(t.positionSec / t.durationSec)
+            }
+        }
+        guard !stutterAnchorNormalized.isEmpty else { return }
+        stutterTimer = Timer.scheduledTimer(withTimeInterval: stutterRepeatIntervalSec, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            for (slot, u) in self.stutterAnchorNormalized {
+                self.engine.seek(slotIndex: slot, normalized: u)
+            }
+        }
+    }
+
+    private func stopStutterEffect() {
+        stutterTimer?.invalidate()
+        stutterTimer = nil
+        stutterAnchorNormalized.removeAll()
+    }
+
+    private func ccKeyPressed(_ v: Int) -> Bool {
+        v >= 64 || (v > 0 && v < 64)
+    }
+
+    /// 再生中の全ボイスを一時停止／再開（ハードの再生／一時停止ボタンと同じ）
+    func toggleTransportPause() {
+        engine.toggleTransportPause()
+    }
+
     func stopAll() {
+        stopStutterEffect()
         engine.stopAll()
     }
 
     func panic() {
+        stopStutterEffect()
         engine.stopAll()
     }
 
     func startPadCapture(bank: Int) {
         capturePadSession = PadCaptureSession(bankIndex: bank)
+        captureFaderIndex = nil
+        captureKnobIndex = nil
+        captureButtonIndex = nil
         captureControlMessage = "バンク \(bank + 1): 左下を PAD1 とし、右→上の順で 16 パッドを押してください"
     }
 
@@ -487,19 +607,44 @@ final class AppViewModel: ObservableObject {
         capturePadSession = nil
         captureFaderIndex = nil
         captureKnobIndex = nil
+        captureButtonIndex = nil
         captureControlMessage = nil
     }
 
     func startFaderCapture(index: Int) {
         captureFaderIndex = index
         captureKnobIndex = nil
+        captureButtonIndex = nil
         captureControlMessage = "フェーダー \(index + 1) を動かしてください（CC を記録）"
     }
 
     func startKnobCapture(index: Int) {
         captureKnobIndex = index
         captureFaderIndex = nil
+        captureButtonIndex = nil
         captureControlMessage = "ノブ \(index + 1) を回してください（CC を記録）"
+    }
+
+    /// プロファイルの `buttons[index]` に記録（0〜3=従来、4=A、5=B）
+    func startButtonCapture(index: Int) {
+        guard index >= 0 else { return }
+        capturePadSession = nil
+        captureFaderIndex = nil
+        captureKnobIndex = nil
+        captureButtonIndex = index
+        captureControlMessage = "「\(Self.hardwareButtonRoleName(index: index))」に割り当てるパッド（ノート）またはトランスポートボタン（CC）を操作してください"
+    }
+
+    private static func hardwareButtonRoleName(index: Int) -> String {
+        switch index {
+        case 0: return "全停止"
+        case 1: return "バンクを次へ"
+        case 2: return "バンクを前へ"
+        case 3: return "再生／一時停止"
+        case 4: return "A ボタン"
+        case 5: return "B ボタン"
+        default: return "ボタン \(index + 1)"
+        }
     }
 
     func exportProfileJSON() -> String? {
@@ -595,6 +740,35 @@ final class AppViewModel: ObservableObject {
             return
         }
 
+        if let bi = captureButtonIndex {
+            if case let .noteOn(ch, note, vel) = ev, vel > 0 {
+                if profile.midiChannel == nil || profile.midiChannel == ch {
+                    var p = profile
+                    while p.buttons.count <= bi {
+                        p.buttons.append(.cc(channel: nil, number: 0))
+                    }
+                    p.buttons[bi] = .note(channel: profile.midiChannel ?? ch, note: note)
+                    profile = p
+                    captureButtonIndex = nil
+                    let label = Self.hardwareButtonRoleName(index: bi)
+                    captureControlMessage = "「\(label)」をノート \(note)（CH \(ch + 1)）に割り当てました"
+                }
+            } else if case let .controlChange(ch, cc, _) = ev {
+                if profile.midiChannel == nil || profile.midiChannel == ch {
+                    var p = profile
+                    while p.buttons.count <= bi {
+                        p.buttons.append(.cc(channel: nil, number: 0))
+                    }
+                    p.buttons[bi] = .cc(channel: profile.midiChannel ?? ch, number: cc)
+                    profile = p
+                    captureButtonIndex = nil
+                    let label = Self.hardwareButtonRoleName(index: bi)
+                    captureControlMessage = "「\(label)」を CC \(cc)（CH \(ch + 1)）に割り当てました"
+                }
+            }
+            return
+        }
+
         switch ev {
         case let .programChange(ch, program):
             if profile.midiChannel == nil || profile.midiChannel == ch, let b = profile.bankFromProgramChange(program) {
@@ -617,6 +791,17 @@ final class AppViewModel: ObservableObject {
         profile = p
         capturePadSession = nil
         captureControlMessage = "パッドマップを保存しました（バンク \(s.bankIndex + 1)）"
+    }
+
+    /// PAN／EQ 系は MIDI 64 を中央（フラット）に、それ以外は 0…127 を 0…1 に線形マップ。
+    private func knobNormalizedFromMidi(_ value: Int, role: KnobRole) -> Float {
+        switch role {
+        case .pan, .eqLow, .eqMid, .eqHigh:
+            let t = max(-1, min(1, (Float(value) - 64) / 63))
+            return max(0, min(1, (t + 1) / 2))
+        default:
+            return max(0, min(1, Float(value) / 127))
+        }
     }
 
     private func handleControlChange(channel: Int, cc: Int, value: Int) {
@@ -643,19 +828,71 @@ final class AppViewModel: ObservableObject {
                 }
             case .knob(let i):
                 if i < knobDisplay.count {
-                    let v: Float
-                    if kit.knobRoles.indices.contains(i), kit.knobRoles[i] == .pan {
-                        let pan = max(-1, min(1, (Float(value) - 64) / 63))
-                        v = max(0, min(1, (pan + 1) / 2))
-                    } else {
-                        v = max(0, min(1, Float(value) / 127))
-                    }
+                    let role = kit.knobRoles.indices.contains(i) ? kit.knobRoles[i] : KnobRole.none
+                    let v = knobNormalizedFromMidi(value, role: role)
                     knobDisplay[i] = v
                     applyFaderRolesToEngine()
                 }
-            case .button:
-                break
+            case .button(let i):
+                if i >= 4 {
+                    handleSideButtonCC(buttonIndex: i, value: value)
+                } else {
+                    handleHardwareButtonCC(buttonIndex: i, value: value)
+                }
             }
+        }
+    }
+
+    /// A/B（CC）。押下／離脱を検出してモードごとに処理。
+    private func handleSideButtonCC(buttonIndex: Int, value: Int) {
+        let mode = modeForSideButton(buttonIndex)
+        let prev = lastHardwareButtonCCValue[buttonIndex] ?? -1
+        lastHardwareButtonCCValue[buttonIndex] = value
+        let wasDown = prev >= 0 && ccKeyPressed(prev)
+        let isDown = ccKeyPressed(value)
+
+        switch mode {
+        case .panic:
+            let crossedHigh = prev < 64 && value >= 64
+            let crossedLowBinary = prev <= 0 && value > 0 && value < 64
+            guard crossedHigh || crossedLowBinary else { return }
+            panic()
+        case .queueNextPad:
+            if !wasDown && isDown {
+                sideButtonHeld.insert(buttonIndex)
+            } else if wasDown && !isDown {
+                sideButtonHeld.remove(buttonIndex)
+                let anyQueueStill = [4, 5].contains { sideButtonHeld.contains($0) && modeForSideButton($0) == .queueNextPad }
+                if !anyQueueStill {
+                    commitQueueTransition()
+                }
+            }
+        case .stutter:
+            if !wasDown && isDown {
+                startStutterEffect()
+            } else if wasDown && !isDown {
+                stopStutterEffect()
+            }
+        }
+    }
+
+    /// CC 系ハードボタン（0〜3）。127/64 系の「64 以上へ立ち上がり」または 0/1 系の「0→正」のどちらでも 1 回だけ処理。
+    private func handleHardwareButtonCC(buttonIndex: Int, value: Int) {
+        let prev = lastHardwareButtonCCValue[buttonIndex] ?? -1
+        lastHardwareButtonCCValue[buttonIndex] = value
+        let crossedHigh = prev < 64 && value >= 64
+        let crossedLowBinary = prev <= 0 && value > 0 && value < 64
+        guard crossedHigh || crossedLowBinary else { return }
+        performHardwareButtonAction(index: buttonIndex)
+    }
+
+    private func performHardwareButtonAction(index: Int) {
+        switch index {
+        case 0: stopAll()
+        case 1: uiBank = (uiBank + 1) % PresetKit.banks
+        case 2: uiBank = (uiBank + PresetKit.banks - 1) % PresetKit.banks
+        case 3: toggleTransportPause()
+        default: break
         }
     }
 
@@ -679,19 +916,54 @@ final class AppViewModel: ObservableObject {
         }
         if let role = profile.roleForNote(channel: channel, note: note) {
             switch role {
-            case .button(0):
-                stopAll()
-            case .button(1):
-                uiBank = (uiBank + 1) % PresetKit.banks
-            case .button(2):
-                uiBank = (uiBank + PresetKit.banks - 1) % PresetKit.banks
-            default:
+            case .button(let i) where i >= 4:
+                guard velocity > 0 else { return }
+                handleSideButtonNoteDown(buttonIndex: i)
+            case .button(let i):
+                guard velocity > 0 else { return }
+                performHardwareButtonAction(index: i)
+            case .fader, .knob:
                 break
             }
         }
     }
 
+    private func handleSideButtonNoteDown(buttonIndex: Int) {
+        switch modeForSideButton(buttonIndex) {
+        case .queueNextPad:
+            sideButtonHeld.insert(buttonIndex)
+        case .panic:
+            panic()
+        case .stutter:
+            startStutterEffect()
+        }
+    }
+
+    private func handleSideButtonNoteUp(buttonIndex: Int) {
+        switch modeForSideButton(buttonIndex) {
+        case .queueNextPad:
+            sideButtonHeld.remove(buttonIndex)
+            let anyQueueStill = [4, 5].contains { sideButtonHeld.contains($0) && modeForSideButton($0) == .queueNextPad }
+            if !anyQueueStill {
+                commitQueueTransition()
+            }
+        case .panic:
+            break
+        case .stutter:
+            stopStutterEffect()
+        }
+    }
+
     private func handleNoteOff(channel: Int, note: Int) {
+        if let role = profile.roleForNote(channel: channel, note: note) {
+            switch role {
+            case .button(let i) where i >= 4:
+                handleSideButtonNoteUp(buttonIndex: i)
+                return
+            case .button, .fader, .knob:
+                break
+            }
+        }
         guard let idx = profile.padIndex(note: note, channel: channel) else { return }
         let cfg = kit.slots[idx]
         if cfg.respectNoteOff {

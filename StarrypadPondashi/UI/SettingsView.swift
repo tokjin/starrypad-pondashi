@@ -72,6 +72,22 @@ struct SettingsView: View {
                 Slider(value: $vm.kit.masterVolume, in: 0 ... 1) {
                     Text("マスター")
                 }
+                Picker("A ボタンの動作", selection: Binding(
+                    get: { vm.kit.sideButtonAMode },
+                    set: { v in var k = vm.kit; k.sideButtonAMode = v; vm.kit = k }
+                )) {
+                    ForEach(SideButtonBehavior.allCases) { m in
+                        Text(m.displayName).tag(m)
+                    }
+                }
+                Picker("B ボタンの動作", selection: Binding(
+                    get: { vm.kit.sideButtonBMode },
+                    set: { v in var k = vm.kit; k.sideButtonBMode = v; vm.kit = k }
+                )) {
+                    ForEach(SideButtonBehavior.allCases) { m in
+                        Text(m.displayName).tag(m)
+                    }
+                }
             }
 
             Section("マッピングキャプチャ") {
@@ -94,6 +110,21 @@ struct SettingsView: View {
                 HStack {
                     Button("ノブ1 CC") { vm.startKnobCapture(index: 0) }
                     Button("ノブ2 CC") { vm.startKnobCapture(index: 1) }
+                }
+                Text("トランスポート／その他（ノート）")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                HStack {
+                    Button("全停止") { vm.startButtonCapture(index: 0) }
+                    Button("バンク次") { vm.startButtonCapture(index: 1) }
+                }
+                HStack {
+                    Button("バンク前") { vm.startButtonCapture(index: 2) }
+                    Button("再生／一時停止") { vm.startButtonCapture(index: 3) }
+                }
+                HStack {
+                    Button("A ボタン") { vm.startButtonCapture(index: 4) }
+                    Button("B ボタン") { vm.startButtonCapture(index: 5) }
                 }
                 Button("キャプチャ取消") { vm.cancelCapture() }
                 Button("プロファイルを Application Support に保存") {

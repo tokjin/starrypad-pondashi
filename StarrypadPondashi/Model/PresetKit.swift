@@ -63,6 +63,12 @@ enum KnobRole: String, Codable, CaseIterable, Identifiable {
     case delayFeedback
     case delayTime
     case playbackRate
+    /// ローシェルフ（約 200 Hz）のカット／ブースト。中央がフラット。
+    case eqLow
+    /// パラメトリック（約 1.8 kHz）のカット／ブースト。中央がフラット。
+    case eqMid
+    /// ハイシェルフ（約 9 kHz）のカット／ブースト。中央がフラット。
+    case eqHigh
 
     var id: String { rawValue }
 
@@ -79,6 +85,29 @@ enum KnobRole: String, Codable, CaseIterable, Identifiable {
         case .delayFeedback: return "ディレイフィードバック"
         case .delayTime: return "ディレイタイム"
         case .playbackRate: return "再生速度"
+        case .eqLow: return "LOW"
+        case .eqMid: return "MID"
+        case .eqHigh: return "HIGH"
+        }
+    }
+}
+
+/// 物理の A / B ボタンに割り当てる動作（プロファイルの `buttons[4]` / `buttons[5]`）
+enum SideButtonBehavior: String, Codable, CaseIterable, Identifiable {
+    /// A/B を押したままパッドを指定し、離したときクロスフェードで切り替え
+    case queueNextPad
+    /// 全停止（panic）
+    case panic
+    /// 押している間だけ同じ位置を短くループ（スタッター）
+    case stutter
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .queueNextPad: return "次のパッドを予約（離して切り替え）"
+        case .stutter: return "スタッター（押している間ループ）"
+        case .panic: return "全停止（panic）"
         }
     }
 }
@@ -281,9 +310,14 @@ struct PresetKit: Codable, Equatable {
     var faderRoles: [FaderRole]
     /// インデックス 0=K1, 1=K2
     var knobRoles: [KnobRole]
+    /// プロファイルのハード「A」ボタン（`buttons[4]`）の動作
+    var sideButtonAMode: SideButtonBehavior
+    /// プロファイルのハード「B」ボタン（`buttons[5]`）の動作
+    var sideButtonBMode: SideButtonBehavior
 
     enum CodingKeys: String, CodingKey {
         case name, slots, masterVolume, maxPolyphony, stealOldestVoice, faderRoles, knobRoles
+        case sideButtonAMode, sideButtonBMode
     }
 
     init(from decoder: Decoder) throws {
@@ -306,6 +340,8 @@ struct PresetKit: Codable, Equatable {
         } else {
             knobRoles = [.none, .none]
         }
+        sideButtonAMode = try c.decodeIfPresent(SideButtonBehavior.self, forKey: .sideButtonAMode) ?? .queueNextPad
+        sideButtonBMode = try c.decodeIfPresent(SideButtonBehavior.self, forKey: .sideButtonBMode) ?? .stutter
         var decoded = try c.decode([SlotConfig].self, forKey: .slots)
         if decoded.count < Self.slotCount {
             for i in decoded.count ..< Self.slotCount {
@@ -328,7 +364,9 @@ struct PresetKit: Codable, Equatable {
         maxPolyphony: Int,
         stealOldestVoice: Bool,
         faderRoles: [FaderRole],
-        knobRoles: [KnobRole]
+        knobRoles: [KnobRole],
+        sideButtonAMode: SideButtonBehavior = .queueNextPad,
+        sideButtonBMode: SideButtonBehavior = .stutter
     ) {
         self.name = name
         self.slots = slots
@@ -337,6 +375,8 @@ struct PresetKit: Codable, Equatable {
         self.stealOldestVoice = stealOldestVoice
         self.faderRoles = faderRoles.count >= 2 ? Array(faderRoles.prefix(2)) : [.master, .pan]
         self.knobRoles = knobRoles.count >= 2 ? Array(knobRoles.prefix(2)) : [.none, .none]
+        self.sideButtonAMode = sideButtonAMode
+        self.sideButtonBMode = sideButtonBMode
     }
 
     static func makeEmpty(name: String = "Untitled") -> PresetKit {
@@ -347,7 +387,9 @@ struct PresetKit: Codable, Equatable {
             maxPolyphony: 32,
             stealOldestVoice: true,
             faderRoles: [.master, .pan],
-            knobRoles: [.none, .none]
+            knobRoles: [.none, .none],
+            sideButtonAMode: .queueNextPad,
+            sideButtonBMode: .stutter
         )
     }
 
@@ -364,6 +406,8 @@ struct PresetKit: Codable, Equatable {
         try c.encode(stealOldestVoice, forKey: .stealOldestVoice)
         try c.encode(faderRoles, forKey: .faderRoles)
         try c.encode(knobRoles, forKey: .knobRoles)
+        try c.encode(sideButtonAMode, forKey: .sideButtonAMode)
+        try c.encode(sideButtonBMode, forKey: .sideButtonBMode)
     }
 }
 

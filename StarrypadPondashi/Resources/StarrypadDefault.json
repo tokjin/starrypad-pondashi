@@ -78,6 +78,18 @@
     {
       "note" : 102,
       "type" : "note"
+    },
+    {
+      "number" : 60,
+      "type" : "cc"
+    },
+    {
+      "note" : 96,
+      "type" : "note"
+    },
+    {
+      "note" : 97,
+      "type" : "note"
     }
   ],
   "deviceNameHints" : [
