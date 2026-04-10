@@ -1,7 +1,9 @@
 # Starrypad Pondashi
 
-`Starrypad Pondashi` は、macOS 向けのサンプラーパッドアプリです。  
-MIDI パッドコントローラー（例: DONNER Starrypad）からノート/CC を受け取り、48 スロット（3 バンク × 16 パッド）のサンプル再生を行います。
+`Starrypad Pondashi` は、macOS 向けのDONNER Starrypadに特化したサンプラーパッドアプリです。  
+MIDI パッドコントローラーからノート/CC を受け取り、48 スロット（3 バンク × 16 パッド）のサンプル再生を行います。
+
+![メイン画面（左: コントロール / 中央: パッドグリッド / 右: インスペクタ）](docs/screenshot.png)
 
 ## 主な機能
 
