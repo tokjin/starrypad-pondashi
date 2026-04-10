@@ -50,45 +50,79 @@ struct PadGridView: View {
         }
     }
 
+    private static func padBaseFill(cfg: SlotConfig) -> Color {
+        if let t = cfg.padTint {
+            return Color(red: t.r, green: t.g, blue: t.b, opacity: t.a)
+        }
+        return Color(nsColor: .controlBackgroundColor)
+    }
+
+    /// 着色ありで、白系ラベルのほうが読みやすいとき真（暗めプリセット想定）
+    private static func padPrefersLightForeground(cfg: SlotConfig) -> Bool {
+        guard let t = cfg.padTint else { return false }
+        let l = 0.2126 * t.r + 0.7152 * t.g + 0.0722 * t.b
+        return l < 0.52
+    }
+
+    private static func padNormalBorderColor(cfg: SlotConfig, lightFG: Bool) -> Color {
+        if lightFG { return Color.white.opacity(0.22) }
+        if cfg.padTint != nil { return Color.primary.opacity(0.18) }
+        return Color.secondary.opacity(0.22)
+    }
+
+    private static func padCellBorderColor(hitFlash: Bool, isSelected: Bool, cfg: SlotConfig, lightFG: Bool) -> Color {
+        if hitFlash { return Color.orange }
+        if isSelected { return Color.accentColor }
+        return padNormalBorderColor(cfg: cfg, lightFG: lightFG)
+    }
+
     @ViewBuilder
     private func padCell(slot: Int, padLabel: Int, hint: String) -> some View {
         let cfg = vm.kit.slots[slot]
-        let name = (cfg.filePath as NSString?)?.lastPathComponent ?? "空"
+        let name = cfg.padDisplayLabel()
         let playing = vm.playingSlots.contains(slot)
-        let isSelected = selectedSlot == slot
+        /// インスペクタ表示中のみ選択の青枠を付ける（格納時は付けない）
+        let isSelected = inspectorPresented && selectedSlot == slot
         let hitFlash = vm.lastHitSlot == slot
         let isDropHover = dropHoverSlot == slot
+        let lightFG = Self.padPrefersLightForeground(cfg: cfg)
 
         ZStack(alignment: .topTrailing) {
             // `Button` はドラッグを奪うため、タップで再生してドラッグは親に任せる
             VStack(spacing: 6) {
                 Text("PAD \(padLabel)")
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(lightFG ? Color.white.opacity(0.62) : Color.secondary)
                 Text(name)
                     .font(.caption2)
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(lightFG ? Color.white : Color.primary)
                 Text(hint)
                     .font(.system(size: 8))
                     .lineLimit(2)
                     .minimumScaleFactor(0.8)
                     .multilineTextAlignment(.center)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(lightFG ? Color.white.opacity(0.48) : Color(NSColor.tertiaryLabelColor))
             }
             .frame(minWidth: 76, minHeight: 88)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(8)
             .padding(.top, 4)
             .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(playing ? Color.accentColor.opacity(0.32) : Color(nsColor: .controlBackgroundColor))
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Self.padBaseFill(cfg: cfg))
+                    if playing {
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color.accentColor.opacity(cfg.padTint != nil ? 0.22 : 0.32))
+                    }
+                }
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
                     .strokeBorder(
-                        hitFlash ? Color.orange : (isSelected ? Color.accentColor : Color.secondary.opacity(0.22)),
+                        Self.padCellBorderColor(hitFlash: hitFlash, isSelected: isSelected, cfg: cfg, lightFG: lightFG),
                         lineWidth: hitFlash ? 3 : (isSelected ? 2.5 : 1)
                     )
             )
@@ -100,6 +134,13 @@ struct PadGridView: View {
                     )
                     .opacity(isDropHover ? 1 : 0)
             )
+            .overlay(alignment: .bottom) {
+                if playing, cfg.filePath != nil {
+                    PadPlaybackProgressBar(slot: slot, lightChrome: lightFG)
+                        .padding(.horizontal, 8)
+                        .padding(.bottom, 6)
+                }
+            }
             .animation(.easeOut(duration: 0.12), value: vm.lastHitSlot)
             .contentShape(RoundedRectangle(cornerRadius: 12))
             .onTapGesture {
@@ -116,7 +157,7 @@ struct PadGridView: View {
             } label: {
                 Image(systemName: "ellipsis.circle")
                     .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(lightFG ? Color.white.opacity(0.72) : .secondary)
                     .padding(6)
                     .contentShape(Rectangle())
             }
@@ -170,5 +211,37 @@ struct PadGridView: View {
             return true
         }
         return false
+    }
+}
+
+/// パッド内の再生位置（閲覧のみ・シーク不可）
+private struct PadPlaybackProgressBar: View {
+    @EnvironmentObject private var vm: AppViewModel
+    let slot: Int
+    /// 暗い着色パッド上ではトラック／つまみを白系にする
+    var lightChrome: Bool = false
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 12.0, paused: false)) { _ in
+            let t = vm.engine.playbackTimeline(for: slot)
+            let fraction: CGFloat = {
+                guard let t, t.durationSec > 0.000_1 else { return 0 }
+                return CGFloat(t.positionSec / t.durationSec)
+            }()
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(lightChrome ? Color.white.opacity(0.22) : Color.primary.opacity(0.14))
+                    Capsule()
+                        .fill(lightChrome ? Color.white.opacity(0.92) : Color.accentColor.opacity(0.9))
+                        .frame(width: max(2, geo.size.width * fraction))
+                }
+            }
+            .frame(height: 3)
+            .frame(maxWidth: .infinity)
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }

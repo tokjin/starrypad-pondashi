@@ -20,6 +20,7 @@
 		BF09 /* StarrypadLeftPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FR09 /* StarrypadLeftPanelView.swift */; };
 		BF0A /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FR0A /* SettingsView.swift */; };
 		BF0B /* PadInspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FR0B /* PadInspectorView.swift */; };
+		BF15 /* YouTubeAudioImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = FR15 /* YouTubeAudioImport.swift */; };
 		BF0C /* StarrypadDefault.json in Resources */ = {isa = PBXBuildFile; fileRef = FR0C /* StarrypadDefault.json */; };
 		BF0D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = FR0D /* Assets.xcassets */; };
 /* End PBXBuildFile section */
@@ -39,6 +40,7 @@
 		FR09 /* StarrypadLeftPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarrypadLeftPanelView.swift; sourceTree = "<group>"; };
 		FR0A /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		FR0B /* PadInspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PadInspectorView.swift; sourceTree = "<group>"; };
+		FR15 /* YouTubeAudioImport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouTubeAudioImport.swift; sourceTree = "<group>"; };
 		FR0C /* StarrypadDefault.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = StarrypadDefault.json; sourceTree = "<group>"; };
 		FR0D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -109,6 +111,7 @@
 			children = (
 				FR07 /* SampleEngine.swift */,
 				FR0F /* AudioOutputDevices.swift */,
+				FR15 /* YouTubeAudioImport.swift */,
 			);
 			path = Audio;
 			sourceTree = "<group>";
@@ -216,6 +219,7 @@
 				BF09 /* StarrypadLeftPanelView.swift in Sources */,
 				BF0A /* SettingsView.swift in Sources */,
 				BF0B /* PadInspectorView.swift in Sources */,
+				BF15 /* YouTubeAudioImport.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

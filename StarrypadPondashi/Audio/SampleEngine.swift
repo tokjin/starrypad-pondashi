@@ -25,6 +25,8 @@ private final class ActiveVoice {
     let file: AVAudioFile
     /// 現在スケジュール中のバッファがファイル内のどこから始まるか（ループの各周で更新）
     var segmentStartFrame: AVAudioFramePosition
+    /// ループ時、各周の先頭でこのフレームから再生する（再生開始位置＝シーク後の先頭）
+    var loopRestartFrame: AVAudioFramePosition
     let loop: Bool
     let fadeOutMs: Double
 
@@ -35,6 +37,7 @@ private final class ActiveVoice {
         chokeGroup: Int?,
         file: AVAudioFile,
         segmentStartFrame: AVAudioFramePosition,
+        loopRestartFrame: AVAudioFramePosition,
         loop: Bool,
         fadeOutMs: Double
     ) {
@@ -45,6 +48,7 @@ private final class ActiveVoice {
         self.startTime = Date()
         self.file = file
         self.segmentStartFrame = segmentStartFrame
+        self.loopRestartFrame = loopRestartFrame
         self.loop = loop
         self.fadeOutMs = fadeOutMs
     }
@@ -440,6 +444,7 @@ final class SampleEngine: ObservableObject {
                 chokeGroup: chokeGroup,
                 file: file,
                 segmentStartFrame: segment.start,
+                loopRestartFrame: segment.start,
                 loop: loop,
                 fadeOutMs: fadeOutMs
             )
@@ -485,7 +490,7 @@ final class SampleEngine: ObservableObject {
         }
     }
 
-    /// `nextStartFrame` は初回のみインスペクタの開始位置、以降は先頭からループ。
+    /// `nextStartFrame` はその周の先頭。ループ継続時は `loopRestartFrame`（再生開始位置）を毎周使う。
     private func scheduleLoop(player: AVAudioPlayerNode, file: AVAudioFile, voice: ActiveVoice, fadeOutMs: Double, nextStartFrame: AVAudioFramePosition) {
         let len = file.length
         guard len > 0 else { return }
@@ -497,7 +502,13 @@ final class SampleEngine: ObservableObject {
             self?.voiceQueue.async {
                 guard let self else { return }
                 guard self.activeVoices.contains(where: { $0 === voice }) else { return }
-                self.scheduleLoop(player: player, file: file, voice: voice, fadeOutMs: fadeOutMs, nextStartFrame: 0)
+                self.scheduleLoop(
+                    player: player,
+                    file: file,
+                    voice: voice,
+                    fadeOutMs: fadeOutMs,
+                    nextStartFrame: voice.loopRestartFrame
+                )
             }
         }
     }
@@ -524,11 +535,17 @@ final class SampleEngine: ObservableObject {
             return (min(pos, durationSec), durationSec)
         }
         // `sampleTime` はセグメント先頭からの相対。絶対フレームは segmentStartFrame + sampleTime。
-        // combined が len をわずかに超える場合はクランプする。超過時に sampleTime だけを絶対位置とみなすと
-        // 相対値が小さいとき先頭付近に飛ぶことがあるため、combined を必ずクランプする。
+        // ループ再生では `sampleTime` がセグメントを跨いで累積し続けることがあり、combined が len を超える。
+        // そのままクランプすると常に終端付近になりプログレスがリセットされないため、ループ時は len で折り返す。
         let st = pt.sampleTime
         let combined = v.segmentStartFrame + st
-        let absFrame = max(0, min(combined, len - 1))
+        let absFrame: AVAudioFramePosition
+        if v.loop {
+            let m = combined % len
+            absFrame = m >= 0 ? m : m + len
+        } else {
+            absFrame = max(0, min(combined, len - 1))
+        }
         return (Double(absFrame) / sr, durationSec)
     }
 
@@ -555,6 +572,7 @@ final class SampleEngine: ObservableObject {
 
         voice.player.stop()
         voice.segmentStartFrame = start
+        voice.loopRestartFrame = start
         let vol = voice.mixer.outputVolume
 
         if voice.loop {

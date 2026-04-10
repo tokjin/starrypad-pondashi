@@ -83,6 +83,48 @@ enum KnobRole: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+/// パッドグリッド上のセル背景色（nil = 既定のコントロール色／再生時はアクセント）
+struct PadSlotTint: Codable, Equatable {
+    var r: Double
+    var g: Double
+    var b: Double
+    var a: Double
+
+    /// プリセット選択のハイライト用（RGBA すべて近いとき真）
+    func isApproxEqual(to other: PadSlotTint, epsilon: Double = 0.05) -> Bool {
+        abs(r - other.r) <= epsilon
+            && abs(g - other.g) <= epsilon
+            && abs(b - other.b) <= epsilon
+            && abs(a - other.a) <= epsilon
+    }
+}
+
+/// インスペクターから選べるおすすめ色（暗め・白字とのコントラスト向け）
+struct PadColorPreset: Identifiable, Equatable {
+    let id: String
+    let name: String
+    let tint: PadSlotTint
+
+    func matches(_ current: PadSlotTint?) -> Bool {
+        guard let current else { return false }
+        return current.isApproxEqual(to: tint)
+    }
+
+    /// 基本は不透明の暗色。名前は短くしてグリッドに収める。
+    static let builtin: [PadColorPreset] = [
+        PadColorPreset(id: "slate", name: "スレート", tint: PadSlotTint(r: 0.20, g: 0.22, b: 0.27, a: 1)),
+        PadColorPreset(id: "charcoal", name: "チャコール", tint: PadSlotTint(r: 0.14, g: 0.15, b: 0.18, a: 1)),
+        PadColorPreset(id: "ink", name: "インク", tint: PadSlotTint(r: 0.10, g: 0.11, b: 0.14, a: 1)),
+        PadColorPreset(id: "navy", name: "ネイビー", tint: PadSlotTint(r: 0.09, g: 0.13, b: 0.28, a: 1)),
+        PadColorPreset(id: "indigo", name: "インディゴ", tint: PadSlotTint(r: 0.14, g: 0.14, b: 0.34, a: 1)),
+        PadColorPreset(id: "plum", name: "プラム", tint: PadSlotTint(r: 0.20, g: 0.12, b: 0.24, a: 1)),
+        PadColorPreset(id: "wine", name: "ワイン", tint: PadSlotTint(r: 0.26, g: 0.10, b: 0.14, a: 1)),
+        PadColorPreset(id: "forest", name: "フォレスト", tint: PadSlotTint(r: 0.10, g: 0.20, b: 0.14, a: 1)),
+        PadColorPreset(id: "teal", name: "ティール", tint: PadSlotTint(r: 0.07, g: 0.22, b: 0.24, a: 1)),
+        PadColorPreset(id: "sepia", name: "セピア", tint: PadSlotTint(r: 0.24, g: 0.18, b: 0.12, a: 1))
+    ]
+}
+
 /// 1 スロット（パッド 1 つ分）の設定
 struct SlotConfig: Codable, Equatable, Identifiable {
     var id: Int { index }
@@ -94,16 +136,20 @@ struct SlotConfig: Codable, Equatable, Identifiable {
     var loop: Bool
     var fadeInMs: Double
     var fadeOutMs: Double
-    /// 再生開始位置（ファイル先頭からのミリ秒）。ループ時は最初の周だけ適用され、以降は先頭から繰り返します。
+    /// 再生開始位置（ファイル先頭からのミリ秒）。ループ時も各周の先頭からこの位置で再生します。
     var startOffsetMs: Double
     var chokeGroup: Int?
     var respectNoteOff: Bool
     /// `false` のときは常に最大音量相当で再生（MIDI ベロシティを無視）
     var velocitySensitive: Bool
     var retriggerBehavior: RetriggerBehavior
+    /// パッドセルの背景に重ねる色。nil で従来どおりシステム色ベース。
+    var padTint: PadSlotTint?
+    /// パッド上の表示名。nil または空のときは `filePath` のファイル名を使う。
+    var fileDisplayName: String?
 
     enum CodingKeys: String, CodingKey {
-        case index, fileBookmark, filePath, volume, loop, fadeInMs, fadeOutMs, startOffsetMs, chokeGroup, respectNoteOff, velocitySensitive, retriggerBehavior
+        case index, fileBookmark, filePath, volume, loop, fadeInMs, fadeOutMs, startOffsetMs, chokeGroup, respectNoteOff, velocitySensitive, retriggerBehavior, padTint, fileDisplayName
     }
 
     init(
@@ -118,7 +164,9 @@ struct SlotConfig: Codable, Equatable, Identifiable {
         chokeGroup: Int?,
         respectNoteOff: Bool,
         velocitySensitive: Bool,
-        retriggerBehavior: RetriggerBehavior
+        retriggerBehavior: RetriggerBehavior,
+        padTint: PadSlotTint? = nil,
+        fileDisplayName: String? = nil
     ) {
         self.index = index
         self.fileBookmark = fileBookmark
@@ -132,6 +180,8 @@ struct SlotConfig: Codable, Equatable, Identifiable {
         self.respectNoteOff = respectNoteOff
         self.velocitySensitive = velocitySensitive
         self.retriggerBehavior = retriggerBehavior
+        self.padTint = padTint
+        self.fileDisplayName = fileDisplayName
     }
 
     init(from decoder: Decoder) throws {
@@ -146,8 +196,10 @@ struct SlotConfig: Codable, Equatable, Identifiable {
         startOffsetMs = try c.decodeIfPresent(Double.self, forKey: .startOffsetMs) ?? 0
         chokeGroup = try c.decodeIfPresent(Int.self, forKey: .chokeGroup)
         respectNoteOff = try c.decodeIfPresent(Bool.self, forKey: .respectNoteOff) ?? false
-        velocitySensitive = try c.decodeIfPresent(Bool.self, forKey: .velocitySensitive) ?? true
+        velocitySensitive = try c.decodeIfPresent(Bool.self, forKey: .velocitySensitive) ?? false
         retriggerBehavior = try c.decodeIfPresent(RetriggerBehavior.self, forKey: .retriggerBehavior) ?? .layer
+        padTint = try c.decodeIfPresent(PadSlotTint.self, forKey: .padTint)
+        fileDisplayName = try c.decodeIfPresent(String.self, forKey: .fileDisplayName)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -164,6 +216,18 @@ struct SlotConfig: Codable, Equatable, Identifiable {
         try c.encode(respectNoteOff, forKey: .respectNoteOff)
         try c.encode(velocitySensitive, forKey: .velocitySensitive)
         try c.encode(retriggerBehavior, forKey: .retriggerBehavior)
+        try c.encodeIfPresent(padTint, forKey: .padTint)
+        try c.encodeIfPresent(fileDisplayName, forKey: .fileDisplayName)
+    }
+
+    /// パッドグリッドに表示するラベル（音声なしは「空」）。
+    func padDisplayLabel(emptyLabel: String = "空") -> String {
+        guard let path = filePath else { return emptyLabel }
+        let base = (path as NSString).lastPathComponent
+        if let custom = fileDisplayName?.trimmingCharacters(in: .whitespacesAndNewlines), !custom.isEmpty {
+            return custom
+        }
+        return base
     }
 
     static func empty(index: Int) -> SlotConfig {
@@ -178,8 +242,10 @@ struct SlotConfig: Codable, Equatable, Identifiable {
             startOffsetMs: 0,
             chokeGroup: nil,
             respectNoteOff: false,
-            velocitySensitive: true,
-            retriggerBehavior: .layer
+            velocitySensitive: false,
+            retriggerBehavior: .layer,
+            padTint: nil,
+            fileDisplayName: nil
         )
     }
 
@@ -197,7 +263,9 @@ struct SlotConfig: Codable, Equatable, Identifiable {
             chokeGroup: chokeGroup,
             respectNoteOff: respectNoteOff,
             velocitySensitive: velocitySensitive,
-            retriggerBehavior: retriggerBehavior
+            retriggerBehavior: retriggerBehavior,
+            padTint: padTint,
+            fileDisplayName: fileDisplayName
         )
     }
 }

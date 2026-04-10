@@ -48,6 +48,10 @@ final class AppViewModel: ObservableObject {
     /// 直近に叩かれたパッド（短時間ハイライト用）
     @Published private(set) var lastHitSlot: Int?
 
+    /// YouTube / yt-dlp 取り込み中（空パッドのインスペクタ用）
+    @Published var youtubeImportInProgress = false
+    @Published var youtubeImportError: String?
+
     /// 音声出力デバイス一覧（設定画面用）
     @Published private(set) var audioOutputDeviceList: [(id: AudioDeviceID, name: String)] = []
     /// `nil` = システム既定
@@ -323,7 +327,31 @@ final class AppViewModel: ObservableObject {
         var k = kit
         k.slots[slot].filePath = path
         k.slots[slot].fileBookmark = bookmark
+        k.slots[slot].fileDisplayName = nil
         kit = k
+    }
+
+    func clearYoutubeImportError() {
+        youtubeImportError = nil
+    }
+
+    /// 空パッド向け: `yt-dlp -x --audio-format mp3` で取得して Samples に登録
+    func importYouTubeToPad(rawInput: String, slot: Int) {
+        Task { @MainActor in
+            youtubeImportInProgress = true
+            youtubeImportError = nil
+            defer { youtubeImportInProgress = false }
+            do {
+                let watchURL = try YouTubeAudioImport.resolveWatchURL(from: rawInput)
+                let (mp3, tempDir) = try await Task.detached(priority: .userInitiated) {
+                    try YouTubeAudioImport.downloadAudioMP3(youtubeURL: watchURL)
+                }.value
+                defer { try? FileManager.default.removeItem(at: tempDir) }
+                try assignAudio(url: mp3, toSlot: slot)
+            } catch {
+                youtubeImportError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            }
+        }
     }
 
     /// DnD 等：コピーをバックグラウンドで行い、完了後にメインでキットを更新
@@ -338,6 +366,7 @@ final class AppViewModel: ObservableObject {
                     var k = self.kit
                     k.slots[slot].filePath = path
                     k.slots[slot].fileBookmark = bookmark
+                    k.slots[slot].fileDisplayName = nil
                     self.kit = k
                 }
             } catch {}
@@ -349,6 +378,7 @@ final class AppViewModel: ObservableObject {
         var k = kit
         k.slots[slot].filePath = nil
         k.slots[slot].fileBookmark = nil
+        k.slots[slot].fileDisplayName = nil
         kit = k
     }
 

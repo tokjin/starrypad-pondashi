@@ -11,10 +11,40 @@ struct PadInspectorView: View {
     /// インスペクタパネルを閉じる（格納）
     var onDismiss: (() -> Void)?
 
+    @State private var appearanceExpanded = false
+    @State private var youtubeInput = ""
+
     private var padNumberInBank: Int { slot % 16 + 1 }
     private var bankLetter: String {
         let b = slot / 16
         return ["A", "B", "C"][min(b, 2)]
+    }
+
+    /// スロット／割当音声のいずれかが変わったら ytId 入力を捨てる（次回まで残さない）
+    private var slotAudioSignature: String {
+        guard slot >= 0, slot < vm.kit.slots.count else { return "" }
+        return "\(slot)|\(vm.kit.slots[slot].filePath ?? "")"
+    }
+
+    /// 格納時は1行で、現在の着色をサムネ表示
+    private var appearanceSectionLabel: some View {
+        HStack(spacing: 8) {
+            Text("外観")
+            Spacer(minLength: 4)
+            if slot >= 0, slot < vm.kit.slots.count, let t = vm.kit.slots[slot].padTint {
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(Color(red: t.r, green: t.g, blue: t.b, opacity: t.a))
+                    .frame(width: 16, height: 16)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 3)
+                            .strokeBorder(Color.primary.opacity(0.2), lineWidth: 1)
+                    )
+            } else {
+                Text("既定")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 
     var body: some View {
@@ -52,25 +82,90 @@ struct PadInspectorView: View {
                                 Button("音声を割当…") { pickAudio() }
                                 Button("クリア", role: .destructive) { vm.clearSlot(slot) }
                             }
-                            if let path = vm.kit.slots[slot].filePath {
-                                Text((path as NSString).lastPathComponent)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(2)
+                            if vm.kit.slots[slot].filePath != nil {
+                                HStack(alignment: .center, spacing: 10) {
+                                    Text("表示名")
+                                        .foregroundStyle(.secondary)
+                                        .frame(width: 48, alignment: .leading)
+                                    TextField("", text: fileDisplayNameBinding)
+                                        .textFieldStyle(.roundedBorder)
+                                        .font(.caption)
+                                        .multilineTextAlignment(.leading)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
                             } else {
                                 Text("音声なし（クリックでは鳴りません）")
                                     .font(.caption)
                                     .foregroundStyle(.orange)
+
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("YouTube から取り込み")
+                                        .font(.subheadline.weight(.semibold))
+                                    HStack(alignment: .center, spacing: 10) {
+                                        Text("ytId")
+                                            .foregroundStyle(.secondary)
+                                            .frame(width: 40, alignment: .leading)
+                                        TextField("", text: $youtubeInput)
+                                            .textFieldStyle(.roundedBorder)
+                                            .multilineTextAlignment(.leading)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .onChange(of: youtubeInput) { _ in
+                                                vm.clearYoutubeImportError()
+                                            }
+                                    }
+                                    .onChange(of: slotAudioSignature) { _ in
+                                        youtubeInput = ""
+                                        vm.clearYoutubeImportError()
+                                    }
+                                    HStack(spacing: 10) {
+                                        Button("MP3 をダウンロードして登録") {
+                                            vm.importYouTubeToPad(rawInput: youtubeInput, slot: slot)
+                                        }
+                                        .disabled(
+                                            youtubeInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                                || vm.youtubeImportInProgress
+                                        )
+                                        if vm.youtubeImportInProgress {
+                                            ProgressView()
+                                                .controlSize(.small)
+                                        }
+                                    }
+                                    if let err = vm.youtubeImportError {
+                                        Text(err)
+                                            .font(.caption)
+                                            .foregroundStyle(.red)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                    }
+                                }
+                                .padding(.top, 4)
                             }
                         } header: {
                             Text("音声")
                         }
 
-                        if vm.playingSlots.contains(slot), vm.kit.slots[slot].filePath != nil {
-                            Section {
-                                InspectorPlaybackSeekBar(slot: slot)
-                            } header: {
-                                Text("再生中")
+                        Section {
+                            DisclosureGroup(isExpanded: $appearanceExpanded) {
+                                Text("おすすめ（暗め・白字向け）")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                LazyVGrid(
+                                    columns: [GridItem(.adaptive(minimum: 76), spacing: 8)],
+                                    spacing: 8
+                                ) {
+                                    ForEach(PadColorPreset.builtin) { preset in
+                                        padPresetButton(preset)
+                                    }
+                                }
+                                .padding(.vertical, 2)
+
+                                ColorPicker("カスタムの色", selection: padTintColorBinding, supportsOpacity: true)
+                                Button("デフォルトの色に戻す") {
+                                    replaceSlot { $0.padTint = nil }
+                                }
+                                .disabled(vm.kit.slots[slot].padTint == nil)
+                            } label: {
+                                appearanceSectionLabel
                             }
                         }
 
@@ -130,7 +225,7 @@ struct PadInspectorView: View {
                         } header: {
                             Text("再生方法")
                         } footer: {
-                            Text("ゲートは MIDI のノートオフ、または対応パッドの離脱に反応します。ループ時は最初の一周だけ開始位置が使われ、続くループはファイル先頭からになります。開始位置がファイル長を超えると鳴りません。")
+                            Text("ゲートは MIDI のノートオフ、または対応パッドの離脱に反応します。ループ時も毎周、再生開始位置から繰り返します。開始位置がファイル長を超えると鳴りません。")
                                 .font(.caption2)
                         }
                     }
@@ -205,11 +300,92 @@ struct PadInspectorView: View {
         )
     }
 
+    /// パッド上の表示テキスト。ファイル名と同じ／空にすると `fileDisplayName` を nil に戻す。
+    private var fileDisplayNameBinding: Binding<String> {
+        Binding(
+            get: {
+                guard slot >= 0, slot < vm.kit.slots.count else { return "" }
+                let cfg = vm.kit.slots[slot]
+                guard let path = cfg.filePath else { return "" }
+                let base = (path as NSString).lastPathComponent
+                if let custom = cfg.fileDisplayName, !custom.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    return custom
+                }
+                return base
+            },
+            set: { newValue in
+                let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                replaceSlot { cfg in
+                    guard let path = cfg.filePath else { return }
+                    let base = (path as NSString).lastPathComponent
+                    if trimmed.isEmpty || trimmed == base {
+                        cfg.fileDisplayName = nil
+                    } else {
+                        cfg.fileDisplayName = trimmed
+                    }
+                }
+            }
+        )
+    }
+
+    private var padTintColorBinding: Binding<Color> {
+        Binding(
+            get: {
+                if let t = vm.kit.slots[slot].padTint {
+                    return Color(red: t.r, green: t.g, blue: t.b, opacity: t.a)
+                }
+                return Color(nsColor: .controlBackgroundColor)
+            },
+            set: { color in
+                let ns = NSColor(color)
+                guard let rgb = ns.usingColorSpace(.deviceRGB) else {
+                    replaceSlot { $0.padTint = nil }
+                    return
+                }
+                var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+                rgb.getRed(&r, green: &g, blue: &b, alpha: &a)
+                replaceSlot {
+                    $0.padTint = PadSlotTint(r: Double(r), g: Double(g), b: Double(b), a: Double(a))
+                }
+            }
+        )
+    }
+
     private func replaceSlot(_ body: (inout SlotConfig) -> Void) {
         var k = vm.kit
         guard slot >= 0, slot < k.slots.count else { return }
         body(&k.slots[slot])
         vm.kit = k
+    }
+
+    @ViewBuilder
+    private func padPresetButton(_ preset: PadColorPreset) -> some View {
+        let current = vm.kit.slots[slot].padTint
+        let selected = preset.matches(current)
+        Button {
+            replaceSlot { $0.padTint = preset.tint }
+        } label: {
+            VStack(spacing: 4) {
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color(red: preset.tint.r, green: preset.tint.g, blue: preset.tint.b, opacity: preset.tint.a))
+                    .frame(height: 28)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .strokeBorder(
+                                selected ? Color.accentColor : Color.primary.opacity(0.2),
+                                lineWidth: selected ? 2 : 1
+                            )
+                    )
+                Text(preset.name)
+                    .font(.caption2)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                    .foregroundStyle(.primary)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(preset.name)の色を適用\(selected ? "、選択中" : "")")
     }
 
     private func pickAudio() {
@@ -220,46 +396,5 @@ struct PadInspectorView: View {
             guard r == .OK, let url = panel.url else { return }
             try? vm.assignAudio(url: url, toSlot: slot)
         }
-    }
-}
-
-/// 再生中スロットのシークバー（`AVAudioPlayerNode` を再スケジュール）
-private struct InspectorPlaybackSeekBar: View {
-    @EnvironmentObject private var vm: AppViewModel
-    let slot: Int
-    @State private var isDragging = false
-    @State private var dragNorm: Float = 0
-
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { _ in
-            let t = vm.engine.playbackTimeline(for: slot)
-            let liveNorm: Float = {
-                guard let t, t.durationSec > 0.000_1 else { return 0 }
-                return Float(t.positionSec / t.durationSec)
-            }()
-            let displayNorm = isDragging ? dragNorm : liveNorm
-
-            Slider(
-                value: Binding(
-                    get: { Double(displayNorm) },
-                    set: { v in
-                        isDragging = true
-                        dragNorm = Float(v)
-                    }
-                ),
-                in: 0 ... 1,
-                onEditingChanged: { editing in
-                    if !editing {
-                        vm.engine.seek(slotIndex: slot, normalized: dragNorm)
-                        isDragging = false
-                    }
-                }
-            )
-            .labelsHidden()
-            .frame(maxWidth: .infinity)
-            .accessibilityLabel("再生位置")
-            .accessibilityValue(String(format: "%.0f%%", Double(displayNorm) * 100))
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
