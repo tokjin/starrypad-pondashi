@@ -67,6 +67,9 @@ final class AppViewModel: ObservableObject {
     @Published var selectedAudioOutputDeviceID: AudioDeviceID?
 
     private static let audioOutputDeviceDefaultsKey = "selectedAudioOutputDeviceID"
+    /// 前回 MIDI（または UI）で確定したフェーダー／ノブの 0…1（実機は起動時に必ず CC を送るとは限らない）
+    private static let hardwareFaderDisplayDefaultsKey = "hardwareFaderDisplay"
+    private static let hardwareKnobDisplayDefaultsKey = "hardwareKnobDisplay"
 
     private var cancellables = Set<AnyCancellable>()
     private var padHitClearTask: Task<Void, Never>?
@@ -81,6 +84,10 @@ final class AppViewModel: ObservableObject {
     private var stutterTimer: Timer?
 
     init() {
+        if let (f, k) = Self.loadHardwareControlDisplaysFromDefaults() {
+            faderDisplay = f
+            knobDisplay = k
+        }
         kit = AppStatePersistence.loadKitIfPresent() ?? PresetKit.makeEmpty()
         profile = AppStatePersistence.loadProfileIfPresent() ?? ProfileStore.loadBundledDefault()
         applyFaderRolesToEngine()
@@ -122,6 +129,7 @@ final class AppViewModel: ObservableObject {
             queue: .main
         ) { [weak self] _ in
             guard let self else { return }
+            self.persistHardwareControlDisplays()
             try? AppStatePersistence.saveKit(self.kit)
             try? AppStatePersistence.saveProfile(self.profile)
         }
@@ -135,6 +143,23 @@ final class AppViewModel: ObservableObject {
         }
         // 起動直後に setOutputDevice すると stop/start が走り無音になることがあるため、
         // 保存済みの出力先は SettingsView.onAppear の applySavedAudioOutputDevice で適用する。
+    }
+
+    private static func loadHardwareControlDisplaysFromDefaults() -> ([Float], [Float])? {
+        guard let fd = UserDefaults.standard.array(forKey: hardwareFaderDisplayDefaultsKey) as? [Double],
+              let kd = UserDefaults.standard.array(forKey: hardwareKnobDisplayDefaultsKey) as? [Double],
+              fd.count >= 2, kd.count >= 2
+        else {
+            return nil
+        }
+        let f = fd.prefix(2).map { max(0, min(1, Float($0))) }
+        let k = kd.prefix(2).map { max(0, min(1, Float($0))) }
+        return (Array(f), Array(k))
+    }
+
+    private func persistHardwareControlDisplays() {
+        UserDefaults.standard.set(faderDisplay.map(Double.init), forKey: Self.hardwareFaderDisplayDefaultsKey)
+        UserDefaults.standard.set(knobDisplay.map(Double.init), forKey: Self.hardwareKnobDisplayDefaultsKey)
     }
 
     func refreshAudioOutputDevices() {
@@ -442,6 +467,7 @@ final class AppViewModel: ObservableObject {
         guard index >= 0, index < faderDisplay.count else { return }
         faderDisplay[index] = max(0, min(1, value))
         applyFaderRolesToEngine()
+        persistHardwareControlDisplays()
     }
 
     func setFaderRole(index: Int, role: FaderRole) {
@@ -466,6 +492,7 @@ final class AppViewModel: ObservableObject {
         guard index >= 0, index < knobDisplay.count else { return }
         knobDisplay[index] = max(0, min(1, value))
         applyFaderRolesToEngine()
+        persistHardwareControlDisplays()
     }
 
     /// インスペクタでスロット音量を変更したとき、再生中のボイスへ即反映
@@ -825,6 +852,7 @@ final class AppViewModel: ObservableObject {
                     }
                     faderDisplay[i] = v
                     applyFaderRolesToEngine()
+                    persistHardwareControlDisplays()
                 }
             case .knob(let i):
                 if i < knobDisplay.count {
@@ -832,6 +860,7 @@ final class AppViewModel: ObservableObject {
                     let v = knobNormalizedFromMidi(value, role: role)
                     knobDisplay[i] = v
                     applyFaderRolesToEngine()
+                    persistHardwareControlDisplays()
                 }
             case .button(let i):
                 if i >= 4 {
